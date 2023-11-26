@@ -1,0 +1,31 @@
+name: farmbound-cli
+base: core22
+version: '0.0.1'
+summary: CLI implementation of the Farmbound web game
+description: |
+  This is a port of the diurnal game of farming, Farmbound, to the Linux CLI.
+  It does not currently save your best score, nor produce arrows.
+  It does not have the nice animations or other visual effects of the original.
+  It does not communicate with the online scoring system of the original.
+  It *does* produce the same games that the original does (at least, it will, once the arrows are supported).
+
+  The original was by Stuart Langridge, this port is by Roger Light.
+
+grade: stable
+confinement: strict
+
+apps:
+  farmbound-cli:
+    command: usr/local/bin/farmbound-cli
+
+parts:
+  farmbound-cli:
+    plugin: make
+    source: .
+
+    build-packages:
+      - gcc
+      - uthash-dev
+
+    prime:
+      - usr/local/bin/farmbound-cli
