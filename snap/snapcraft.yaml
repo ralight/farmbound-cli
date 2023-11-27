@@ -11,6 +11,11 @@ description: |
 
   The original was by Stuart Langridge, this port is by Roger Light.
 
+architectures:
+  - build-on: amd64
+  - build-on: arm64
+  - build-on: armhf
+
 grade: stable
 confinement: strict
 
