@@ -97,7 +97,7 @@ int32_t seed_main;
 
 //const char moves[] = "WWSSSSKWSSSWSSSWKSSCCSSSKSKSSCSSCKCSWSSSSSSKSSSSSSSSSSCSSSSSSSSSKCSSSSSKSSSKSCSSCKCSSSCSSSSSSSWSSSSSCKMSWCSKSSSSSCSWSWSCSSSSKSSSSSKWSSSSSSSWCSSSSSSSSSSKSSSSSSSWSSSSSKSWWWSSSWCSSSKSSCWWSSWSSSSSSKSSKCWSS";
 
-void term_fix(void)
+static void term_fix(void)
 {
 	struct termios ti;
 
@@ -106,7 +106,7 @@ void term_fix(void)
 	tcsetattr(fileno(stdin), 0, &ti);
 }
 
-void term_restore(void)
+static void term_restore(void)
 {
 	struct termios ti;
 
@@ -354,12 +354,12 @@ static double seeded_random(void)
 }
 
 
-int32_t unsigned_shift(uint32_t *v, int s)
+static int32_t unsigned_shift(uint32_t *v, int s)
 {
 	return (int32_t)((*v) >> s);
 }
 
-uint32_t cyrb128(const char *str)
+static uint32_t cyrb128(const char *str)
 {
 	int32_t h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
 	int32_t k;
