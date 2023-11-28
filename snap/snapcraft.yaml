@@ -1,11 +1,10 @@
 name: farmbound-cli
 base: core22
-version: '0.0.2'
+version: '0.0.3'
 summary: CLI implementation of the Farmbound web game
 description: |
   This is a port of the diurnal game of farming, Farmbound, to the Linux CLI.
   It does not currently save your best score.
-  It does not have the nice animations or other visual effects of the original.
   It does not communicate with the online scoring system of the original.
   It *does* produce the same games that the original does.
 

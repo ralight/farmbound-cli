@@ -8,6 +8,10 @@
 #include <time.h>
 #include <utlist.h>
 
+#define COL_WATER 1
+#define COL_MANURE 2
+#define COL_FERTILISER 3
+
 #define EMPTY -1
 #define SEED 0
 #define CROP 1
@@ -51,11 +55,11 @@ struct board_space{
 	struct board_space *r;
 	struct board_space *u;
 	struct board_space *d;
-	struct board_space *booster;
 	int g;
 	int click;
 	int pos;
 	int e;
+	int e_old;
 };
 
 struct boost_event{
@@ -70,6 +74,8 @@ static struct board_space board[16];
 static struct board_space *groups[16];
 static struct boost_event *boosts = NULL;
 static int boost_used[16];
+static int background_colour[16];
+static int score_colour[16];
 static int total_score;
 static int CLICKS = 0;
 static int move_count = 0;
@@ -100,7 +106,7 @@ static void term_restore(void)
 static void clear_groups(void)
 {
 	memset(groups, 0, sizeof(groups));
-	memset(&boost_used, 0, sizeof(boost_used));
+	memset(boost_used, 0, sizeof(boost_used));
 	boosts = NULL;
 
 	for(int i=0; i<16; i++){
@@ -122,16 +128,42 @@ static int boost_cmp(struct boost_event *a, struct boost_event *b)
 
 static void print_board(void)
 {
+	bool have_background = false;
+	bool have_score = false;
+
 	printf("\e[2J");
 	printf("\e[1,1H");
 	for(int i=0; i<16; i++){
+		if(score_colour[i]){
+			printf("\e[48;5;226m");
+			have_score = true;
+			score_colour[i] = 0;
+		}
+		if(background_colour[i] == COL_WATER){
+			printf("\e[48;2;150;150;255m");
+			have_background = true;
+		}else if(background_colour[i] == COL_MANURE){
+			printf("\e[48;2;191;105;82m");
+			have_background = true;
+		}else if(background_colour[i] == COL_FERTILISER){
+			printf("\e[48;2;80;165;230m");
+			have_background = true;
+		}
 		if(board[i].e == EMPTY){
-			//printf("⚫️");
-			//printf("🟫");
 			printf("⬛️");
 		}else{
-			printf("%s", g_items[board[i].e].icon);
+			if(background_colour[i]){
+				if(board[i].e_old == EMPTY){
+					printf("⬛️");
+				}else{
+					printf("%s", g_items[board[i].e_old].icon);
+				}
+			}else{
+				printf("%s", g_items[board[i].e].icon);
+			}
 		}
+		printf("\e[0m");
+
 		if(i == 7){
 			printf("  Next:  %s\n", g_items[CURRENT].icon);
 		}else if(i == 11){
@@ -141,6 +173,21 @@ static void print_board(void)
 		}else if(i == 3){
 			printf("\n");
 		}
+	}
+	if(have_score){
+		struct timespec req = {0, 200000000};
+		nanosleep(&req, NULL);
+
+		print_board();
+		return;
+	}
+	if(have_background){
+		memset(background_colour, 0, sizeof(background_colour));
+
+		struct timespec req = {0, 300000000};
+		nanosleep(&req, NULL);
+
+		print_board();
 	}
 }
 
@@ -240,14 +287,19 @@ static void boost_add(struct board_space *b, struct board_space *other){
 	if (other->e == WATER && !boost_used[other->pos]) {
 		// there's unused water next to this field, so use it
 		boost_used[other->pos] = 1;
+		background_colour[other->pos] = COL_WATER;
+		background_colour[b->pos] = COL_WATER;
 		boost_add_event(b, other, g_items[b->e].evolve, EMPTY);
-		b->booster = other;
 	} else if (other->e == MANURE && boost_used[other->pos] < 4) {
 		boost_used[other->pos] += 1;
+		background_colour[other->pos] = COL_MANURE;
+		background_colour[b->pos] = COL_MANURE;
 		boost_add_event(b, other, g_items[b->e].evolve, WATER);
 		b->click = CLICKS++;
 	} else if (other->e == FERTILISER && boost_used[other->pos] < 10) {
 		boost_used[other->pos] += 1;
+		background_colour[other->pos] = COL_FERTILISER;
+		background_colour[b->pos] = COL_FERTILISER;
 		boost_add_event(b, other, g_items[b->e].evolve, MANURE);
 		b->click = CLICKS++;
 	}
@@ -256,7 +308,7 @@ static void boost_add(struct board_space *b, struct board_space *other){
 static void tick(void)
 {
 	int score = 0;
-	memset(&boost_used, 0, sizeof(boost_used));
+	memset(boost_used, 0, sizeof(boost_used));
 
 	boosts = NULL;
 	for(int i=0; i<16; i++){
@@ -269,10 +321,11 @@ static void tick(void)
 
 		// point scoring via harvesting
 		if (b->e == CROP || b->e == FIELD){
-			score += score_add(b->u);
-			score += score_add(b->d);
-			score += score_add(b->l);
-			score += score_add(b->r);
+			score_colour[b->pos] += score_add(b->u);
+			score_colour[b->pos] += score_add(b->d);
+			score_colour[b->pos] += score_add(b->l);
+			score_colour[b->pos] += score_add(b->r);
+			score += score_colour[b->pos];
 		}
 
 		// boosts (fertiliser, manure, water)
@@ -507,7 +560,7 @@ static void handle_click(char keypress)
 	}
 }
 
-void help(void)
+static void help(void)
 {
 	printf("Combine seeds to make crops\n");
 	printf("     ⬛🌱🌱  →  ⬛⬛🌿\n");
@@ -533,7 +586,7 @@ void help(void)
 	exit(0);
 }
 
-void set_seed(void)
+static void set_seed(void)
 {
 	struct tm *ti;
 	time_t now = time(NULL);
@@ -545,6 +598,12 @@ void set_seed(void)
 	seed_main = cyrb128(seed_string);
 }
 
+static void update_old(void)
+{
+	for(int i=0; i<16; i++){
+		board[i].e_old = board[i].e;
+	}
+}
 
 int main(int argc, char *argv[])
 {
@@ -578,13 +637,17 @@ int main(int argc, char *argv[])
 
 	term_fix();
 	atexit(term_restore);
+	memset(background_colour, 0, sizeof(background_colour));
+	memset(score_colour, 0, sizeof(score_colour));
 
 	nextItem();
 	do{
 		print_board();
 		fflush(stdout);
+		memset(score_colour, 0, sizeof(score_colour));
 		clear_groups();
 		char c = fgetc(stdin);
+		update_old();
 		handle_click(c);
 	}while(1);
 
