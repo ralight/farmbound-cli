@@ -97,25 +97,6 @@ static void term_restore(void)
 	tcsetattr(fileno(stdin), 0, &ti);
 }
 
-static char *to_icon(int c)
-{
-	switch(c){
-		case SEED: return "🌱";
-		case CROP: return "🌿";
-		case FIELD: return "🌾";
-		case SCYTHE: return "🔪";
-		case HARVESTER: return "🚜";
-		case WATER: return "🚰";
-		case MANURE: return "💩";
-		case FERTILISER: return "⚗";
-		case LEFT: return "⬅";
-		case RIGHT: return "➡";
-		case UP: return "⬆";
-		case DOWN: return "⬇";
-	}
-	return "";
-}
-
 static void clear_groups(void)
 {
 	memset(groups, 0, sizeof(groups));
@@ -152,7 +133,7 @@ static void print_board(void)
 			printf("%s", g_items[board[i].e].icon);
 		}
 		if(i == 7){
-			printf("  Next:  %s\n", to_icon(CURRENT));
+			printf("  Next:  %s\n", g_items[CURRENT].icon);
 		}else if(i == 11){
 			printf("  Moves: %d\n", move_count-1);
 		}else if(i == 15){
