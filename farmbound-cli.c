@@ -21,19 +21,6 @@
 #define UP 10
 #define DOWN 11
 
-struct seed_item{
-	uint64_t h1, h2, h3, h4;
-	uint64_t t;
-};
-
-/*
-function setSeed(seed) {
-    document.getElementById("seed").textContent = seed;
-    const hashvalue = cyrb128(seed);
-    seededRandom = mulberry32(hashvalue[0]);
-}
-*/
-
 struct farm_item{
 	int e;
 	int evolve;
@@ -89,8 +76,7 @@ static int total_score;
 static int CLICKS = 0;
 static int move_count = 0;
 static int CURRENT = EMPTY;
-static char seed_string[21];
-int32_t seed_main;
+static int32_t seed_main;
 
 /* 20/05/2023 - no arrows in the first 200 */
 //const char moves[] = "MSSRSSKWSSSWSSSWKSSCCSSSKSKSSCSSCKCSWSSSSSSKSSSSSSSSSSCSSSSSSSSSKCSSSSSKSSSKSCSSCKCSSSCSSSSSSSWSSSSSCKMSWCSKSSSSSCSWSWSCSSSSKSSSSSKWSSSSSSSWCSSSSSSSSSSKSSSSSSSWSSSSSKSWWWSSSWCSSSKSSCWWSSWSSSSSSKSSKCWSS";
@@ -535,6 +521,7 @@ void set_seed(void)
 {
 	struct tm *ti;
 	time_t now = time(NULL);
+	char seed_string[21];
 
 	ti = localtime(&now);
 	strftime(seed_string, sizeof(seed_string), "%d/%m/%Y", ti);
@@ -548,7 +535,6 @@ int main(int argc, char *argv[])
 	if(argc > 1) help();
 
 	set_seed();
-	printf("%s\n", seed_string);
 
 	board[0].l =   NULL;		board[0].r =   &board[1];   board[0].u =   NULL;	   board[0].d =   &board[4];   board[0].pos =  0;
 	board[1].l =   &board[0];   board[1].r =   &board[2];   board[1].u =   NULL;	   board[1].d =   &board[5];   board[1].pos =  1;
