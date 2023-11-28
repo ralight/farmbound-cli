@@ -1,8 +1,8 @@
 CC=gcc
 CXX=g++
 NAME=farmbound-cli
-CFLAGS=-Wall -ggdb
-LDFLAGS=
+CFLAGS=-Wall -ggdb -O3
+LDFLAGS=-lm
 
 all : $(NAME)
 

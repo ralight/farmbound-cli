@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,25 +27,22 @@ struct farm_item{
 	int evolve;
 	char icon[6];
 	double l;
+	int sort;
 };
 
 const struct farm_item g_items[] = {
-	{SEED, CROP, "🌱", 0.65},
-	{CROP, FIELD, "🌿", 0.1},
-	{FIELD, -1, "🌾", 0},
-	{SCYTHE, HARVESTER, "🔪", 0.1},
-	{HARVESTER, -1, "🚜", 0},
-	{WATER, MANURE, "🚰", 0.1},
-	{MANURE, FERTILISER, "💩", 0.01},
-	{FERTILISER, -1, "⚗", 0},
-	//{LEFT, -1, "⬅", 0.01},
-	//{RIGHT, -1, "➡", 0.01},
-	//{UP, -1, "⬆", 0.01},
-	//{DOWN, -1, "⬇", 0.01},
-	{LEFT, -1, "⬅", 0},
-	{RIGHT, -1, "➡", 0},
-	{UP, -1, "⬆", 0},
-	{DOWN, -1, "⬇", 0},
+	{SEED, CROP, "🌱", 0.65, 0},
+	{CROP, FIELD, "🌿", 0.1, 0},
+	{FIELD, -1, "🌾", 0, 0},
+	{SCYTHE, HARVESTER, "🔪", 0.1, 0},
+	{HARVESTER, -1, "🚜", 0, 0},
+	{WATER, MANURE, "🚰", 0.1, 0},
+	{MANURE, FERTILISER, "💩", 0.01, 0},
+	{FERTILISER, -1, "⚗", 0, 0},
+	{LEFT, -1, "🡨", 0.01, 1},
+	{RIGHT, -1, "🡪", 0.01, 2},
+	{UP, -1, "🡡", 0.01, 3},
+	{DOWN, -1, "🡫", 0.01, 0},
 };
 
 struct board_space{
@@ -80,8 +78,6 @@ static int32_t seed_main;
 
 /* 20/05/2023 - no arrows in the first 200 */
 //const char moves[] = "MSSRSSKWSSSWSSSWKSSCCSSSKSKSSCSSCKCSWSSSSSSKSSSSSSSSSSCSSSSSSSSSKCSSSSSKSSSKSCSSCKCSSSCSSSSSSSWSSSSSCKMSWCSKSSSSSCSWSWSCSSSSKSSSSSKWSSSSSSSWCSSSSSSSSSSKSSSSSSSWSSSSSKSWWWSSSWCSSSKSSCWWSSWSSSSSSKSSKCWSS";
-
-//const char moves[] = "WWSSSSKWSSSWSSSWKSSCCSSSKSKSSCSSCKCSWSSSSSSKSSSSSSSSSSCSSSSSSSSSKCSSSSSKSSSKSCSSCKCSSSCSSSSSSSWSSSSSCKMSWCSKSSSSSCSWSWSCSSSSKSSSSSKWSSSSSSSWCSSSSSSSSSSKSSSSSSSWSSSSSKSWWWSSSWCSSSKSSCWWSSWSSSSSSKSSKCWSS";
 
 static void term_fix(void)
 {
@@ -357,7 +353,6 @@ static uint32_t cyrb128(const char *str)
 		h3 = h4 ^ ((h3 ^ k) * 951274213);
 		h4 = h1 ^ ((h4 ^ k) * 2716044179);
 	}
-	//h1 = (h3 ^ (h1 >> 18)) * 597399067;
 	h1 = (h3 ^ unsigned_shift((uint32_t *)&h1, 18)) * 597399067;
 	h2 = (h4 ^ unsigned_shift((uint32_t *)&h2, 22)) * 2869860233;
 	h3 = (h1 ^ unsigned_shift((uint32_t *)&h3, 17)) * 951274213;
@@ -367,61 +362,101 @@ static uint32_t cyrb128(const char *str)
 }
 
 
+static void add_allowed_arrow(int *allowed_arrows, int *allowed_count, int add)
+{
+	if(allowed_arrows[g_items[add].sort] == add){
+		return;
+	}
+
+	allowed_arrows[g_items[add].sort] = add;
+	(*allowed_count)++;
+}
+
+static void fix_allowed_arrows(int *allowed_arrows)
+{
+	/* Shuffle everything to the start */
+	for(int i=0; i<3; i++){
+		int a = i+1;
+		while(allowed_arrows[i] == 0 && a < 4){
+			allowed_arrows[i] = allowed_arrows[a];
+			allowed_arrows[a] = 0;
+			a++;
+		}
+	}
+}
+
 static void nextItem(void)
 {
 	int empty_count = 0;
+	int allowed_arrows[4] = {0,0,0,0};
+	int allowed_count = 0;
+
 	for(int i=0; i<16; i++){
 		if(board[i].e == EMPTY){
 			empty_count++;
+		}else{
+			if(board[i].l && board[i].l->e == EMPTY){
+				add_allowed_arrow(allowed_arrows, &allowed_count, LEFT);
+			}
+			if(board[i].d && board[i].d->e == EMPTY){
+				add_allowed_arrow(allowed_arrows, &allowed_count, DOWN);
+			}
+			if(board[i].u && board[i].u->e == EMPTY){
+				add_allowed_arrow(allowed_arrows, &allowed_count, UP);
+			}
+			if(board[i].r && board[i].r->e == EMPTY){
+				add_allowed_arrow(allowed_arrows, &allowed_count, RIGHT);
+			}
 		}
 	}
+	fix_allowed_arrows(allowed_arrows);
+
 	if(empty_count == 0){
 		end_game();
 	}
 	move_count++;
 
-    int ncurrent;
-    while (true) {
-        double r = seeded_random();
-        double t = 0.0;
+	int ncurrent = -1;
+	while (true) {
+		double r = seeded_random();
+		double t = 0.0;
 		for(int i=0; i<sizeof(g_items)/sizeof(struct farm_item); i++){
-            t += g_items[i].l;
-            if (t >= r) {
-                ncurrent = i;
-                break;
-            }
-        }
-        if(CURRENT == EMPTY && (
-					ncurrent == LEFT || ncurrent == RIGHT ||
-					ncurrent == UP || ncurrent == DOWN)){
+			t += g_items[i].l;
+			if (t >= r) {
+				ncurrent = i;
+				break;
+			}
+		}
+		if(ncurrent == -1) continue;
 
-            // no arrows first go
-            continue;
-        }
+		if(ncurrent == LEFT || ncurrent == RIGHT || ncurrent == UP || ncurrent == DOWN){
+			if(CURRENT == EMPTY){
+				// no arrows first go
+				continue;
+			}
 
-		/*
-        if (ARROWS.has(ncurrent) && !allowedArrows.has(ncurrent)) {
-            // no impossible-to-use arrows
-            // if there are any valid arrows, then randomly pick one of them
-            if (allowedArrows.size) {
-                let aaList = Array.from(allowedArrows).sort();
-                // spin up a new RNG seeded off this number, so we don't consume
-                // a state from the main one (since we'd only consume it if the
-                // initially-chosen arrow doesn't work)
-                const hashvalue = cyrb128(r);
-                const newSeededRandom = mulberry32(hashvalue[0]);
-                let sr = newSeededRandom();
-                let rnd = Math.floor(sr * aaList.length);
-                ncurrent = Array.from(aaList)[rnd];
-            } else {
-                // if there aren't any, bail
-                continue;
-            }
-        }
-		*/
-        break;
-    }
-    CURRENT = ncurrent;
+			bool arrow_ok = false;
+			for(int i=0; i<allowed_count; i++){
+				if(ncurrent == allowed_arrows[i]){
+					arrow_ok = true;
+					break;
+				}
+			}
+			if(arrow_ok == false){
+				if(allowed_count > 0){
+					// no impossible-to-use arrows
+					// if there are any valid arrows, then randomly pick one of them
+					int rnd = floor(allowed_count*0.02388156927190721);
+					ncurrent = allowed_arrows[rnd];
+				}else{
+					// if there aren't any, bail
+					continue;
+				}
+			}
+		}
+		break;
+	}
+	CURRENT = ncurrent;
 }
 
 static bool do_move(struct board_space *b)
