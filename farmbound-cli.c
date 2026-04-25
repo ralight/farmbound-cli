@@ -70,17 +70,19 @@ struct boost_event{
 	int reduce_booster_to;
 };
 
-static struct board_space board[16];
-static struct board_space *groups[16];
-static struct boost_event *boosts = NULL;
-static int boost_used[16];
-static int background_colour[16];
-static int score_colour[16];
-static int total_score;
-static int CLICKS = 0;
-static int move_count = 0;
-static int CURRENT = EMPTY;
-static int32_t seed_main;
+struct game_data{
+	struct board_space board[16];
+	struct board_space *groups[16];
+	struct boost_event *boosts;
+	int boost_used[16];
+	int background_colour[16];
+	int score_colour[16];
+	int total_score;
+	int CLICKS;
+	int move_count;
+	int CURRENT;
+	int32_t seed_main;
+};
 
 /* 20/05/2023 - no arrows in the first 200 */
 //const char moves[] = "MSSRSSKWSSSWSSSWKSSCCSSSKSKSSCSSCKCSWSSSSSSKSSSSSSSSSSCSSSSSSSSSKCSSSSSKSSSKSCSSCKCSSSCSSSSSSSWSSSSSCKMSWCSKSSSSSCSWSWSCSSSSKSSSSSKWSSSSSSSWCSSSSSSSSSSKSSSSSSSWSSSSSKSWWWSSSWCSSSKSSCWWSSWSSSSSSKSSKCWSS";
@@ -103,16 +105,16 @@ static void term_restore(void)
 	tcsetattr(fileno(stdin), 0, &ti);
 }
 
-static void clear_groups(void)
+static void clear_groups(struct game_data *gd)
 {
-	memset(groups, 0, sizeof(groups));
-	memset(boost_used, 0, sizeof(boost_used));
-	boosts = NULL;
+	memset(gd->groups, 0, sizeof(gd->groups));
+	memset(gd->boost_used, 0, sizeof(gd->boost_used));
+	gd->boosts = NULL;
 
 	for(int i=0; i<16; i++){
-		board[i].next = NULL;
-		board[i].prev = NULL;
-		board[i].g = 0;
+		gd->board[i].next = NULL;
+		gd->board[i].prev = NULL;
+		gd->board[i].g = 0;
 	}
 }
 
@@ -126,7 +128,7 @@ static int boost_cmp(struct boost_event *a, struct boost_event *b)
 	return b->b->click - a->b->click;
 }
 
-static void print_board(void)
+static void print_board(struct game_data *gd)
 {
 	bool have_background = false;
 	bool have_score = false;
@@ -134,42 +136,42 @@ static void print_board(void)
 	printf("\e[2J");
 	printf("\e[1,1H");
 	for(int i=0; i<16; i++){
-		if(score_colour[i]){
+		if(gd->score_colour[i]){
 			printf("\e[48;5;226m");
 			have_score = true;
-			score_colour[i] = 0;
+			gd->score_colour[i] = 0;
 		}
-		if(background_colour[i] == COL_WATER){
+		if(gd->background_colour[i] == COL_WATER){
 			printf("\e[48;2;150;150;255m");
 			have_background = true;
-		}else if(background_colour[i] == COL_MANURE){
+		}else if(gd->background_colour[i] == COL_MANURE){
 			printf("\e[48;2;191;105;82m");
 			have_background = true;
-		}else if(background_colour[i] == COL_FERTILISER){
+		}else if(gd->background_colour[i] == COL_FERTILISER){
 			printf("\e[48;2;80;165;230m");
 			have_background = true;
 		}
-		if(board[i].e == EMPTY){
+		if(gd->board[i].e == EMPTY){
 			printf("⬛️");
 		}else{
-			if(background_colour[i]){
-				if(board[i].e_old == EMPTY){
+			if(gd->background_colour[i]){
+				if(gd->board[i].e_old == EMPTY){
 					printf("⬛️");
 				}else{
-					printf("%s", g_items[board[i].e_old].icon);
+					printf("%s", g_items[gd->board[i].e_old].icon);
 				}
 			}else{
-				printf("%s", g_items[board[i].e].icon);
+				printf("%s", g_items[gd->board[i].e].icon);
 			}
 		}
 		printf("\e[0m");
 
 		if(i == 7){
-			printf("  Next:  %s\n", g_items[CURRENT].icon);
+			printf("  Next:  %s\n", g_items[gd->CURRENT].icon);
 		}else if(i == 11){
-			printf("  Moves: %d\n", move_count-1);
+			printf("  Moves: %d\n", gd->move_count-1);
 		}else if(i == 15){
-			printf("  Score: %d\n", total_score);
+			printf("  Score: %d\n", gd->total_score);
 		}else if(i == 3){
 			printf("\n");
 		}
@@ -178,16 +180,16 @@ static void print_board(void)
 		struct timespec req = {0, 200000000};
 		nanosleep(&req, NULL);
 
-		print_board();
+		print_board(gd);
 		return;
 	}
 	if(have_background){
-		memset(background_colour, 0, sizeof(background_colour));
+		memset(gd->background_colour, 0, sizeof(gd->background_colour));
 
 		struct timespec req = {0, 300000000};
 		nanosleep(&req, NULL);
 
-		print_board();
+		print_board(gd);
 	}
 }
 
@@ -202,14 +204,14 @@ static void evolve(struct board_space **group, int icon) {
 	*group = NULL;
 }
 
-static void coalesce(void)
+static void coalesce(struct game_data *gd)
 {
 	// collect into groups
-	clear_groups();
+	clear_groups(gd);
 
 	int groupcount = 1;
 	for(int i=0; i<16; i++){
-		struct board_space *b = &board[i];
+		struct board_space *b = &gd->board[i];
 
 		if (b->e == EMPTY) continue;
 
@@ -222,7 +224,7 @@ static void coalesce(void)
 			// now find everything in the group with b->l and make it b->u's group
 			int leftgroup = b->l->g;
 			for(int j=0; j<16; j++){
-				struct board_space *nb = &board[j];
+				struct board_space *nb = &gd->board[j];
 				if (nb->g == leftgroup) nb->g = b->g;
 			}
 		} else if (b->u && b->u->e == b->e) { b->g = b->u->g; }
@@ -231,33 +233,33 @@ static void coalesce(void)
 	}
 
 	for(int i=0; i<16; i++){
-		struct board_space *b = &board[i];
+		struct board_space *b = &gd->board[i];
 		b->next = NULL;
 		b->prev = NULL;
 
 		if(b->g){
-			DL_APPEND(groups[b->g], b);
+			DL_APPEND(gd->groups[b->g], b);
 		}
 	}
 	bool changed = false;
 
 	for(int i=1; i<16; i++){
-		struct board_space *g = groups[i], *gtmp;
+		struct board_space *g = gd->groups[i], *gtmp;
 		int count;
 
-		DL_COUNT(groups[i], gtmp, count);
+		DL_COUNT(gd->groups[i], gtmp, count);
 		if(count < 3) continue;
 
-		DL_SORT(groups[i], click_cmp);
+		DL_SORT(gd->groups[i], click_cmp);
 
 		int evolve_icon = g_items[g->e].evolve;
 		if (evolve_icon != -1) { // FIELD can't be evolved, for example
-			evolve(&groups[i], evolve_icon);
+			evolve(&gd->groups[i], evolve_icon);
 			changed = true;
 		}
 	}
 	if (changed){
-		coalesce();
+		coalesce(gd);
 	}
 }
 
@@ -269,7 +271,7 @@ static int score_add(struct board_space *b)
 }
 
 
-static void boost_add_event(struct board_space *b, struct board_space *booster, int boost_to, int reduce_booster_to)
+static void boost_add_event(struct game_data *gd, struct board_space *b, struct board_space *booster, int boost_to, int reduce_booster_to)
 {
 	struct boost_event *ev = calloc(1, sizeof(struct boost_event));
 	if(!ev) exit(1);
@@ -278,80 +280,80 @@ static void boost_add_event(struct board_space *b, struct board_space *booster, 
 	ev->booster = booster;
 	ev->boost_to = g_items[b->e].evolve;
 	ev->reduce_booster_to = reduce_booster_to;
-	DL_APPEND(boosts, ev);
+	DL_APPEND(gd->boosts, ev);
 }
 
-static void boost_add(struct board_space *b, struct board_space *other){
+static void boost_add(struct game_data *gd, struct board_space *b, struct board_space *other){
 	if (!other || other->e == EMPTY) return;
 
-	if (other->e == WATER && !boost_used[other->pos]) {
+	if (other->e == WATER && !gd->boost_used[other->pos]) {
 		// there's unused water next to this field, so use it
-		boost_used[other->pos] = 1;
-		background_colour[other->pos] = COL_WATER;
-		background_colour[b->pos] = COL_WATER;
-		boost_add_event(b, other, g_items[b->e].evolve, EMPTY);
-	} else if (other->e == MANURE && boost_used[other->pos] < 4) {
-		boost_used[other->pos] += 1;
-		background_colour[other->pos] = COL_MANURE;
-		background_colour[b->pos] = COL_MANURE;
-		boost_add_event(b, other, g_items[b->e].evolve, WATER);
-		b->click = CLICKS++;
-	} else if (other->e == FERTILISER && boost_used[other->pos] < 10) {
-		boost_used[other->pos] += 1;
-		background_colour[other->pos] = COL_FERTILISER;
-		background_colour[b->pos] = COL_FERTILISER;
-		boost_add_event(b, other, g_items[b->e].evolve, MANURE);
-		b->click = CLICKS++;
+		gd->boost_used[other->pos] = 1;
+		gd->background_colour[other->pos] = COL_WATER;
+		gd->background_colour[b->pos] = COL_WATER;
+		boost_add_event(gd, b, other, g_items[b->e].evolve, EMPTY);
+	} else if (other->e == MANURE && gd->boost_used[other->pos] < 4) {
+		gd->boost_used[other->pos] += 1;
+		gd->background_colour[other->pos] = COL_MANURE;
+		gd->background_colour[b->pos] = COL_MANURE;
+		boost_add_event(gd, b, other, g_items[b->e].evolve, WATER);
+		b->click = gd->CLICKS++;
+	} else if (other->e == FERTILISER && gd->boost_used[other->pos] < 10) {
+		gd->boost_used[other->pos] += 1;
+		gd->background_colour[other->pos] = COL_FERTILISER;
+		gd->background_colour[b->pos] = COL_FERTILISER;
+		boost_add_event(gd, b, other, g_items[b->e].evolve, MANURE);
+		b->click = gd->CLICKS++;
 	}
 }
 
-static void tick(void)
+static void tick(struct game_data *gd)
 {
 	int score = 0;
-	memset(boost_used, 0, sizeof(boost_used));
+	memset(gd->boost_used, 0, sizeof(gd->boost_used));
 
-	boosts = NULL;
+	gd->boosts = NULL;
 	for(int i=0; i<16; i++){
-		board[i].next = NULL;
-		board[i].prev = NULL;
+		gd->board[i].next = NULL;
+		gd->board[i].prev = NULL;
 	}
 
 	for(int i=0; i<16; i++){
-		struct board_space *b = &board[i];
+		struct board_space *b = &gd->board[i];
 
 		// point scoring via harvesting
 		if (b->e == CROP || b->e == FIELD){
-			score_colour[b->pos] += score_add(b->u);
-			score_colour[b->pos] += score_add(b->d);
-			score_colour[b->pos] += score_add(b->l);
-			score_colour[b->pos] += score_add(b->r);
-			score += score_colour[b->pos];
+			gd->score_colour[b->pos] += score_add(b->u);
+			gd->score_colour[b->pos] += score_add(b->d);
+			gd->score_colour[b->pos] += score_add(b->l);
+			gd->score_colour[b->pos] += score_add(b->r);
+			score += gd->score_colour[b->pos];
 		}
 
 		// boosts (fertiliser, manure, water)
 		if(b->e == SEED || b->e == CROP){
-			boost_add(b, b->l);
-			boost_add(b, b->u);
-			boost_add(b, b->d);
-			boost_add(b, b->r);
+			boost_add(gd, b, b->l);
+			boost_add(gd, b, b->u);
+			boost_add(gd, b, b->d);
+			boost_add(gd, b, b->r);
 		}
 	}
-	total_score += score;
+	gd->total_score += score;
 
-	DL_SORT(boosts, boost_cmp);
+	DL_SORT(gd->boosts, boost_cmp);
 
 	struct boost_event *ev, *ev_tmp;
-	DL_FOREACH_SAFE(boosts, ev, ev_tmp){
+	DL_FOREACH_SAFE(gd->boosts, ev, ev_tmp){
 		ev->booster->e = ev->reduce_booster_to;
 		ev->b->e = ev->boost_to;
-		DL_DELETE(boosts, ev);
+		DL_DELETE(gd->boosts, ev);
 		free(ev);
 	}
 }
 
-static void end_game(void)
+static void end_game(struct game_data *gd)
 {
-	print_board();
+	print_board(gd);
 	exit(0);
 }
 
@@ -363,9 +365,9 @@ uint32_t mullberry32(int32_t *x) {
 	return z ^ (z >> 14);
 }
 
-static double seeded_random(void)
+static double seeded_random(struct game_data *gd)
 {
-	uint32_t v = mullberry32(&seed_main);
+	uint32_t v = mullberry32(&gd->seed_main);
 	return (double)v / 4294967296.0;
 }
 
@@ -419,26 +421,26 @@ static void fix_allowed_arrows(int *allowed_arrows)
 	}
 }
 
-static void nextItem(void)
+static void nextItem(struct game_data *gd)
 {
 	int empty_count = 0;
 	int allowed_arrows[4] = {0,0,0,0};
 	int allowed_count = 0;
 
 	for(int i=0; i<16; i++){
-		if(board[i].e == EMPTY){
+		if(gd->board[i].e == EMPTY){
 			empty_count++;
 		}else{
-			if(board[i].l && board[i].l->e == EMPTY){
+			if(gd->board[i].l && gd->board[i].l->e == EMPTY){
 				add_allowed_arrow(allowed_arrows, &allowed_count, LEFT);
 			}
-			if(board[i].d && board[i].d->e == EMPTY){
+			if(gd->board[i].d && gd->board[i].d->e == EMPTY){
 				add_allowed_arrow(allowed_arrows, &allowed_count, DOWN);
 			}
-			if(board[i].u && board[i].u->e == EMPTY){
+			if(gd->board[i].u && gd->board[i].u->e == EMPTY){
 				add_allowed_arrow(allowed_arrows, &allowed_count, UP);
 			}
-			if(board[i].r && board[i].r->e == EMPTY){
+			if(gd->board[i].r && gd->board[i].r->e == EMPTY){
 				add_allowed_arrow(allowed_arrows, &allowed_count, RIGHT);
 			}
 		}
@@ -446,13 +448,13 @@ static void nextItem(void)
 	fix_allowed_arrows(allowed_arrows);
 
 	if(empty_count == 0){
-		end_game();
+		end_game(gd);
 	}
-	move_count++;
+	gd->move_count++;
 
 	int ncurrent = -1;
 	while (true) {
-		double r = seeded_random();
+		double r = seeded_random(gd);
 		double t = 0.0;
 		for(int i=0; i<sizeof(g_items)/sizeof(struct farm_item); i++){
 			t += g_items[i].l;
@@ -464,7 +466,7 @@ static void nextItem(void)
 		if(ncurrent == -1) continue;
 
 		if(ncurrent == LEFT || ncurrent == RIGHT || ncurrent == UP || ncurrent == DOWN){
-			if(CURRENT == EMPTY){
+			if(gd->CURRENT == EMPTY){
 				// no arrows first go
 				continue;
 			}
@@ -490,33 +492,33 @@ static void nextItem(void)
 		}
 		break;
 	}
-	CURRENT = ncurrent;
+	gd->CURRENT = ncurrent;
 }
 
-static bool do_move(struct board_space *b)
+static bool do_move(struct game_data *gd, struct board_space *b)
 {
 	struct board_space *match_space = NULL;
 
-	if(CURRENT == LEFT && b->l && b->l->e == EMPTY){
+	if(gd->CURRENT == LEFT && b->l && b->l->e == EMPTY){
 		match_space = b->l;
-	}else if(CURRENT == RIGHT && b->r && b->r->e == EMPTY){
+	}else if(gd->CURRENT == RIGHT && b->r && b->r->e == EMPTY){
 		match_space = b->r;
-	}else if(CURRENT == UP && b->u && b->u->e == EMPTY){
+	}else if(gd->CURRENT == UP && b->u && b->u->e == EMPTY){
 		match_space = b->u;
-	}else if(CURRENT == DOWN && b->d && b->d->e == EMPTY){
+	}else if(gd->CURRENT == DOWN && b->d && b->d->e == EMPTY){
 		match_space = b->d;
 	}
 
 	if(match_space){
 		match_space->e = b->e;
-		match_space->click = CLICKS++;
+		match_space->click = gd->CLICKS++;
 		b->e = EMPTY;
 		return true;
 	}
 	return false;
 }
 
-static void handle_click(char keypress)
+static void handle_click(struct game_data *gd, char keypress)
 {
 	int pos;
 
@@ -540,23 +542,23 @@ static void handle_click(char keypress)
 		default: return;
 	}
 
-	if(CURRENT == LEFT || CURRENT == RIGHT || CURRENT == UP || CURRENT == DOWN){
-		if(board[pos].e == EMPTY) return;
-		bool success = do_move(&board[pos]);
+	if(gd->CURRENT == LEFT || gd->CURRENT == RIGHT || gd->CURRENT == UP || gd->CURRENT == DOWN){
+		if(gd->board[pos].e == EMPTY) return;
+		bool success = do_move(gd, &gd->board[pos]);
 		if (success) {
-			coalesce();
-			tick();
-			nextItem();
-			coalesce();
+			coalesce(gd);
+			tick(gd);
+			nextItem(gd);
+			coalesce(gd);
 		}
 	}else{
-		if(board[pos].e != EMPTY) return;
-		board[pos].click = CLICKS++;
-		board[pos].e = CURRENT;
-		coalesce();
-		tick();
-		nextItem();
-		coalesce();
+		if(gd->board[pos].e != EMPTY) return;
+		gd->board[pos].click = gd->CLICKS++;
+		gd->board[pos].e = gd->CURRENT;
+		coalesce(gd);
+		tick(gd);
+		nextItem(gd);
+		coalesce(gd);
 	}
 }
 
@@ -586,7 +588,7 @@ static void help(void)
 	exit(0);
 }
 
-static void set_seed(void)
+static void set_seed(struct game_data *gd)
 {
 	struct tm *ti;
 	time_t now = time(NULL);
@@ -595,13 +597,13 @@ static void set_seed(void)
 	ti = localtime(&now);
 	strftime(seed_string, sizeof(seed_string), "%d/%m/%Y", ti);
 
-	seed_main = cyrb128(seed_string);
+	gd->seed_main = cyrb128(seed_string);
 }
 
-static void update_old(void)
+static void update_old(struct game_data *gd)
 {
 	for(int i=0; i<16; i++){
-		board[i].e_old = board[i].e;
+		gd->board[i].e_old = gd->board[i].e;
 	}
 }
 
@@ -609,46 +611,48 @@ int main(int argc, char *argv[])
 {
 	if(argc > 1) help();
 
-	set_seed();
+	struct game_data gd;
+	memset(&gd, 0, sizeof(gd));
+	gd.CURRENT = EMPTY;
 
-	board[0].l =   NULL;		board[0].r =   &board[1];   board[0].u =   NULL;	   board[0].d =   &board[4];   board[0].pos =  0;
-	board[1].l =   &board[0];   board[1].r =   &board[2];   board[1].u =   NULL;	   board[1].d =   &board[5];   board[1].pos =  1;
-	board[2].l =   &board[1];   board[2].r =   &board[3];   board[2].u =   NULL;	   board[2].d =   &board[6];   board[2].pos =  2;
-	board[3].l =   &board[2];   board[3].r =   NULL;		board[3].u =   NULL;	   board[3].d =   &board[7];   board[3].pos =  3;
+	set_seed(&gd);
 
-	board[4].l =   NULL;		board[4].r =   &board[5];   board[4].u =   &board[0];  board[4].d =   &board[8];   board[4].pos =  4;
-	board[5].l =   &board[4];   board[5].r =   &board[6];   board[5].u =   &board[1];  board[5].d =   &board[9];   board[5].pos =  5;
-	board[6].l =   &board[5];   board[6].r =   &board[7];   board[6].u =   &board[2];  board[6].d =   &board[10];  board[6].pos =  6;
-	board[7].l =   &board[6];   board[7].r =   NULL;		board[7].u =   &board[3];  board[7].d =   &board[11];  board[7].pos =  7;
+	gd.board[0].l =   NULL;           gd.board[0].r =   &gd.board[1];   gd.board[0].u =   NULL;          gd.board[0].d =   &gd.board[4];   gd.board[0].pos =  0;
+	gd.board[1].l =   &gd.board[0];   gd.board[1].r =   &gd.board[2];   gd.board[1].u =   NULL;          gd.board[1].d =   &gd.board[5];   gd.board[1].pos =  1;
+	gd.board[2].l =   &gd.board[1];   gd.board[2].r =   &gd.board[3];   gd.board[2].u =   NULL;          gd.board[2].d =   &gd.board[6];   gd.board[2].pos =  2;
+	gd.board[3].l =   &gd.board[2];   gd.board[3].r =   NULL;           gd.board[3].u =   NULL;          gd.board[3].d =   &gd.board[7];   gd.board[3].pos =  3;
 
-	board[8].l =   NULL;		board[8].r =   &board[9];   board[8].u =   &board[4];  board[8].d =   &board[12];  board[8].pos =  8;
-	board[9].l =   &board[8];   board[9].r =   &board[10];  board[9].u =   &board[5];  board[9].d =   &board[13];  board[9].pos =  9;
-	board[10].l =  &board[9];   board[10].r =  &board[11];  board[10].u =  &board[6];  board[10].d =  &board[14];  board[10].pos = 10;
-	board[11].l =  &board[10];  board[11].r =  NULL;		board[11].u =  &board[7];  board[11].d =  &board[15];  board[11].pos = 11;
+	gd.board[4].l =   NULL;           gd.board[4].r =   &gd.board[5];   gd.board[4].u =   &gd.board[0];  gd.board[4].d =   &gd.board[8];   gd.board[4].pos =  4;
+	gd.board[5].l =   &gd.board[4];   gd.board[5].r =   &gd.board[6];   gd.board[5].u =   &gd.board[1];  gd.board[5].d =   &gd.board[9];   gd.board[5].pos =  5;
+	gd.board[6].l =   &gd.board[5];   gd.board[6].r =   &gd.board[7];   gd.board[6].u =   &gd.board[2];  gd.board[6].d =   &gd.board[10];  gd.board[6].pos =  6;
+	gd.board[7].l =   &gd.board[6];   gd.board[7].r =   NULL;           gd.board[7].u =   &gd.board[3];  gd.board[7].d =   &gd.board[11];  gd.board[7].pos =  7;
 
-	board[12].l =  NULL;		board[12].r =  &board[13];  board[12].u =  &board[8];  board[12].d =  NULL;        board[12].pos = 12;
-	board[13].l =  &board[12];  board[13].r =  &board[14];  board[13].u =  &board[9];  board[13].d =  NULL;        board[13].pos = 13;
-	board[14].l =  &board[13];  board[14].r =  &board[15];  board[14].u =  &board[10]; board[14].d =  NULL;        board[14].pos = 14;
-	board[15].l =  &board[14];  board[15].r =  NULL;		board[15].u =  &board[11]; board[15].d =  NULL;        board[15].pos = 15;
+	gd.board[8].l =   NULL;           gd.board[8].r =   &gd.board[9];   gd.board[8].u =   &gd.board[4];  gd.board[8].d =   &gd.board[12];  gd.board[8].pos =  8;
+	gd.board[9].l =   &gd.board[8];   gd.board[9].r =   &gd.board[10];  gd.board[9].u =   &gd.board[5];  gd.board[9].d =   &gd.board[13];  gd.board[9].pos =  9;
+	gd.board[10].l =  &gd.board[9];   gd.board[10].r =  &gd.board[11];  gd.board[10].u =  &gd.board[6];  gd.board[10].d =  &gd.board[14];  gd.board[10].pos = 10;
+	gd.board[11].l =  &gd.board[10];  gd.board[11].r =  NULL;           gd.board[11].u =  &gd.board[7];  gd.board[11].d =  &gd.board[15];  gd.board[11].pos = 11;
+
+	gd.board[12].l =  NULL;           gd.board[12].r =  &gd.board[13];  gd.board[12].u =  &gd.board[8];  gd.board[12].d =  NULL;           gd.board[12].pos = 12;
+	gd.board[13].l =  &gd.board[12];  gd.board[13].r =  &gd.board[14];  gd.board[13].u =  &gd.board[9];  gd.board[13].d =  NULL;           gd.board[13].pos = 13;
+	gd.board[14].l =  &gd.board[13];  gd.board[14].r =  &gd.board[15];  gd.board[14].u =  &gd.board[10]; gd.board[14].d =  NULL;           gd.board[14].pos = 14;
+	gd.board[15].l =  &gd.board[14];  gd.board[15].r =  NULL;           gd.board[15].u =  &gd.board[11]; gd.board[15].d =  NULL;           gd.board[15].pos = 15;
 
 	for(int i=0; i<16; i++){
-		board[i].e = EMPTY;
+		gd.board[i].e = EMPTY;
 	}
 
 	term_fix();
 	atexit(term_restore);
-	memset(background_colour, 0, sizeof(background_colour));
-	memset(score_colour, 0, sizeof(score_colour));
 
-	nextItem();
+	nextItem(&gd);
 	do{
-		print_board();
+		print_board(&gd);
 		fflush(stdout);
-		memset(score_colour, 0, sizeof(score_colour));
-		clear_groups();
+		memset(gd.score_colour, 0, sizeof(gd.score_colour));
+		clear_groups(&gd);
 		char c = fgetc(stdin);
-		update_old();
-		handle_click(c);
+		update_old(&gd);
+		handle_click(&gd, c);
 	}while(1);
 
 	return 0;
