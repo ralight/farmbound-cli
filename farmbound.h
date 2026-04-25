@@ -29,20 +29,7 @@ struct farm_item{
 	int sort;
 };
 
-const struct farm_item g_items[] = {
-	{SEED, CROP, "🌱", 0.65, 0},
-	{CROP, FIELD, "🌿", 0.1, 0},
-	{FIELD, -1, "🌾", 0, 0},
-	{SCYTHE, HARVESTER, "🔪", 0.1, 0},
-	{HARVESTER, -1, "🚜", 0, 0},
-	{WATER, MANURE, "🚰", 0.1, 0},
-	{MANURE, FERTILISER, "💩", 0.01, 0},
-	{FERTILISER, -1, "⚗", 0, 0},
-	{LEFT, -1, "🡨", 0.01, 1},
-	{RIGHT, -1, "🡪", 0.01, 2},
-	{UP, -1, "🡡", 0.01, 3},
-	{DOWN, -1, "🡫", 0.01, 0},
-};
+extern const struct farm_item g_items[12];
 
 struct board_space{
 	struct board_space *next, *prev;
@@ -78,5 +65,13 @@ struct game_data{
 	int CURRENT;
 	int32_t seed_main;
 };
+
+void fb__init_game(struct game_data *gd);
+void fb__coalesce(struct game_data *gd);
+void fb__clear_groups(struct game_data *gd);
+bool fb__handle_click(struct game_data *gd, char keypress);
+bool fb__next_item(struct game_data *gd);
+void fb__print_board(struct game_data *gd);
+void fb__set_seed(struct game_data *gd, char *custom_seed);
 
 #endif

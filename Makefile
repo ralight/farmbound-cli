@@ -9,7 +9,10 @@ all : $(NAME)
 $(NAME).o : $(NAME).c farmbound.h
 	$(CC) -c $(CFLAGS) -o $@ $<
 
-$(NAME) : $(NAME).o
+lib.o : lib.c farmbound.h
+	$(CC) -c $(CFLAGS) -o $@ $<
+
+$(NAME) : $(NAME).o lib.o
 	$(CC) -o $@ $^ ${LDFLAGS}
 
 memtest : $(NAME)
