@@ -1,12 +1,12 @@
 CC=gcc
 CXX=g++
 NAME=farmbound-cli
-CFLAGS=-Wall -ggdb -O3
+CFLAGS=-Wall -ggdb -O3 -I.
 LDFLAGS=-lm
 
 all : $(NAME)
 
-$(NAME).o : $(NAME).c
+$(NAME).o : $(NAME).c farmbound.h
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 $(NAME) : $(NAME).o
